@@ -42,6 +42,15 @@ const (
 
 	// Youdao Translate (openapi.youdao.com) — free unofficial endpoint, no key needed
 	// (no key fields required for the unofficial endpoint)
+
+	// API endpoint URL overrides (for proxy / mirror usage)
+	keyBaiduOCRBaseURL      = "baidu_ocr_base_url"
+	keyTencentOCREndpoint   = "tencent_ocr_endpoint"
+	keyBaiduTransBaseURL    = "baidu_trans_base_url"
+	keyTencentTransEndpoint = "tencent_trans_endpoint"
+	keyDeepLFreeBaseURL     = "deepl_free_base_url"
+	keyDeepLPaidBaseURL     = "deepl_paid_base_url"
+	keyYoudaoBaseURL        = "youdao_base_url"
 )
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -68,6 +77,15 @@ type Config struct {
 	TencentTransRegion    string
 	DeepLAuthKey          string
 
+	// API endpoint URL overrides
+	BaiduOCRBaseURL      string // default: https://aip.baidubce.com
+	TencentOCREndpoint   string // default: https://ocr.tencentcloudapi.com
+	BaiduTransBaseURL    string // default: https://fanyi-api.baidu.com
+	TencentTransEndpoint string // default: https://tmt.tencentcloudapi.com
+	DeepLFreeBaseURL     string // default: https://api-free.deepl.com
+	DeepLPaidBaseURL     string // default: https://api.deepl.com
+	YoudaoBaseURL        string // default: https://fanyi.youdao.com
+
 	prefs fyne.Preferences
 }
 
@@ -92,6 +110,14 @@ func Load(prefs fyne.Preferences) *Config {
 		TencentTransRegion:    prefs.StringWithFallback(keyTencentTransRegion, "ap-guangzhou"),
 		DeepLAuthKey:          prefs.String(keyDeepLAuthKey),
 
+		BaiduOCRBaseURL:      prefs.StringWithFallback(keyBaiduOCRBaseURL, "https://aip.baidubce.com"),
+		TencentOCREndpoint:   prefs.StringWithFallback(keyTencentOCREndpoint, "https://ocr.tencentcloudapi.com"),
+		BaiduTransBaseURL:    prefs.StringWithFallback(keyBaiduTransBaseURL, "https://fanyi-api.baidu.com"),
+		TencentTransEndpoint: prefs.StringWithFallback(keyTencentTransEndpoint, "https://tmt.tencentcloudapi.com"),
+		DeepLFreeBaseURL:     prefs.StringWithFallback(keyDeepLFreeBaseURL, "https://api-free.deepl.com"),
+		DeepLPaidBaseURL:     prefs.StringWithFallback(keyDeepLPaidBaseURL, "https://api.deepl.com"),
+		YoudaoBaseURL:        prefs.StringWithFallback(keyYoudaoBaseURL, "https://fanyi.youdao.com"),
+
 		prefs: prefs,
 	}
 }
@@ -115,6 +141,14 @@ func (c *Config) Save() {
 	c.prefs.SetString(keyTencentTransSecretKey, c.TencentTransSecretKey)
 	c.prefs.SetString(keyTencentTransRegion, c.TencentTransRegion)
 	c.prefs.SetString(keyDeepLAuthKey, c.DeepLAuthKey)
+
+	c.prefs.SetString(keyBaiduOCRBaseURL, c.BaiduOCRBaseURL)
+	c.prefs.SetString(keyTencentOCREndpoint, c.TencentOCREndpoint)
+	c.prefs.SetString(keyBaiduTransBaseURL, c.BaiduTransBaseURL)
+	c.prefs.SetString(keyTencentTransEndpoint, c.TencentTransEndpoint)
+	c.prefs.SetString(keyDeepLFreeBaseURL, c.DeepLFreeBaseURL)
+	c.prefs.SetString(keyDeepLPaidBaseURL, c.DeepLPaidBaseURL)
+	c.prefs.SetString(keyYoudaoBaseURL, c.YoudaoBaseURL)
 }
 
 // DefaultSaveDir returns ~/Pictures/Screenshots.

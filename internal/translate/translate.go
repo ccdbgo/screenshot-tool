@@ -32,6 +32,13 @@ type Options struct {
 
 	// DeepL  https://www.deepl.com/pro-api  (free tier available)
 	DeepLAuthKey string
+
+	// API endpoint URL overrides (empty = use defaults)
+	BaiduBaseURL    string // default: https://fanyi-api.baidu.com
+	TencentEndpoint string // default: https://tmt.tencentcloudapi.com
+	DeepLFreeURL    string // default: https://api-free.deepl.com
+	DeepLPaidURL    string // default: https://api.deepl.com
+	YoudaoURL       string // default: https://fanyi.youdao.com
 }
 
 var apiHTTP = &http.Client{Timeout: 15 * time.Second}
@@ -59,7 +66,7 @@ func Translate(src string, opts Options) (string, error) {
 		}
 		return deeplTranslate(src, opts)
 	case "youdao":
-		return youdaoTranslate(src)
+		return youdaoTranslate(src, opts)
 	default: // "local" — no API, just return placeholder
 		return "", fmt.Errorf("请在设置中配置翻译服务商及 API Key")
 	}
@@ -87,7 +94,11 @@ func baiduTranslate(src string, opts Options) (string, error) {
 	params.Set("salt", salt)
 	params.Set("sign", sign)
 
-	resp, err := apiHTTP.PostForm("https://fanyi-api.baidu.com/api/trans/vip/translate", params)
+	baseURL := opts.BaiduBaseURL
+	if baseURL == "" {
+		baseURL = "https://fanyi-api.baidu.com"
+	}
+	resp, err := apiHTTP.PostForm(baseURL+"/api/trans/vip/translate", params)
 	if err != nil {
 		return "", fmt.Errorf("百度翻译请求失败: %w", err)
 	}
@@ -130,12 +141,16 @@ func tencentTranslate(src string, opts Options) (string, error) {
 	if region == "" {
 		region = "ap-guangzhou"
 	}
+	endpoint := opts.TencentEndpoint
+	if endpoint == "" {
+		endpoint = "https://tmt.tencentcloudapi.com"
+	}
 	payload := fmt.Sprintf(`{"SourceText":%s,"Source":"auto","Target":"en","ProjectId":0}`,
 		jsonString(src))
 
 	req, err := tencentSign(
 		opts.TencentSecretID, opts.TencentSecretKey,
-		"tmt", region, "TextTranslate", "2018-03-21", payload,
+		endpoint, region, "TextTranslate", "2018-03-21", payload,
 	)
 	if err != nil {
 		return "", err
@@ -173,16 +188,24 @@ type deeplResp struct {
 
 func deeplTranslate(src string, opts Options) (string, error) {
 	// Free tier uses api-free.deepl.com; paid uses api.deepl.com
-	host := "api-free.deepl.com"
-	if !strings.HasSuffix(opts.DeepLAuthKey, ":fx") {
-		host = "api.deepl.com"
+	var baseURL string
+	if strings.HasSuffix(opts.DeepLAuthKey, ":fx") {
+		baseURL = opts.DeepLFreeURL
+		if baseURL == "" {
+			baseURL = "https://api-free.deepl.com"
+		}
+	} else {
+		baseURL = opts.DeepLPaidURL
+		if baseURL == "" {
+			baseURL = "https://api.deepl.com"
+		}
 	}
 	params := url.Values{}
 	params.Set("auth_key", opts.DeepLAuthKey)
 	params.Set("text", src)
 	params.Set("target_lang", "EN")
 
-	resp, err := apiHTTP.PostForm("https://"+host+"/v2/translate", params)
+	resp, err := apiHTTP.PostForm(baseURL+"/v2/translate", params)
 	if err != nil {
 		return "", fmt.Errorf("DeepL请求失败: %w", err)
 	}
@@ -212,7 +235,11 @@ type youdaoResult struct {
 	Tgt string `json:"tgt"`
 }
 
-func youdaoTranslate(src string) (string, error) {
+func youdaoTranslate(src string, opts Options) (string, error) {
+	baseURL := opts.YoudaoURL
+	if baseURL == "" {
+		baseURL = "https://fanyi.youdao.com"
+	}
 	params := url.Values{}
 	params.Set("type", "AUTO")
 	params.Set("i", src)
@@ -222,7 +249,7 @@ func youdaoTranslate(src string) (string, error) {
 	// add random salt to avoid caching issues
 	params.Set("salt", fmt.Sprintf("%d", rand.Int63()))
 
-	resp, err := apiHTTP.PostForm("https://fanyi.youdao.com/translate", params)
+	resp, err := apiHTTP.PostForm(baseURL+"/translate", params)
 	if err != nil {
 		return "", fmt.Errorf("有道翻译请求失败: %w", err)
 	}
@@ -246,8 +273,17 @@ func youdaoTranslate(src string) (string, error) {
 
 // ─── Tencent Cloud API v3 signature (shared with OCR) ────────────────────────
 
-func tencentSign(secretID, secretKey, service, region, action, version, payload string) (*http.Request, error) {
-	host := service + ".tencentcloudapi.com"
+// tencentSign builds a signed *http.Request for Tencent Cloud API v3.
+// endpoint is the full URL, e.g. "https://tmt.tencentcloudapi.com".
+// The service name is derived from the first subdomain of the host.
+func tencentSign(secretID, secretKey, endpoint, region, action, version, payload string) (*http.Request, error) {
+	parsedURL, parseErr := url.Parse(endpoint)
+	if parseErr != nil || parsedURL.Host == "" {
+		return nil, fmt.Errorf("腾讯云：无效的 API 端点 URL: %s", endpoint)
+	}
+	host := parsedURL.Host
+	service := strings.SplitN(host, ".", 2)[0]
+
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	date := time.Now().UTC().Format("2006-01-02")
 
@@ -269,7 +305,7 @@ func tencentSign(secretID, secretKey, service, region, action, version, payload 
 		secretID, credScope, signedHeaders, hex.EncodeToString(sigKey),
 	)
 
-	req, err := http.NewRequest("POST", "https://"+host, strings.NewReader(payload))
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}

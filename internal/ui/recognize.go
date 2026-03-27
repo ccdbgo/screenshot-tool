@@ -13,43 +13,69 @@ import (
 	"github.com/ccdbp/screenshot-tool/internal/translate"
 )
 
-// ShowRecognizeResult displays a window with OCR text and options to convert
-// to pinyin or translate to English using the configured provider.
+// ShowRecognizeResult displays a window with OCR text at the top and
+// two tabs below: one for pinyin output, one for English translation.
 func ShowRecognizeResult(a fyne.App, cfg *config.Config, text string) {
 	w := a.NewWindow("截图识字")
-	w.Resize(fyne.NewSize(660, 560))
+	w.Resize(fyne.NewSize(700, 580))
 
+	// ── OCR text area ──────────────────────────────────────────────────────
 	ocrEntry := widget.NewMultiLineEntry()
 	ocrEntry.SetText(text)
 	ocrEntry.Wrapping = fyne.TextWrapWord
-	ocrEntry.SetMinRowsVisible(6)
-
-	resultEntry := widget.NewMultiLineEntry()
-	resultEntry.SetPlaceHolder("点击【转拼音】或【英文翻译】按钮…")
-	resultEntry.Wrapping = fyne.TextWrapWord
-	resultEntry.SetMinRowsVisible(6)
-
-	statusLabel := widget.NewLabel("")
+	ocrEntry.SetMinRowsVisible(5)
 
 	copyOCRBtn := widget.NewButton("复制文字", func() {
 		w.Clipboard().SetContent(ocrEntry.Text)
 	})
 
+	// ── Pinyin tab ─────────────────────────────────────────────────────────
+	pinyinEntry := widget.NewMultiLineEntry()
+	pinyinEntry.SetPlaceHolder("点击【转拼音】按钮生成拼音…")
+	pinyinEntry.Wrapping = fyne.TextWrapWord
+
+	pinyinStatus := widget.NewLabel("")
+
+	copyPinyinBtn := widget.NewButton("复制拼音", func() {
+		w.Clipboard().SetContent(pinyinEntry.Text)
+	})
+	copyPinyinBtn.Importance = widget.HighImportance
+
 	pinyinBtn := widget.NewButton("转拼音", func() {
 		src := ocrEntry.Text
-		statusLabel.SetText("转换中…")
+		pinyinStatus.SetText("转换中…")
 		go func() {
 			py := textToPinyin(src)
 			fyne.Do(func() {
-				resultEntry.SetText(py)
-				statusLabel.SetText("")
+				pinyinEntry.SetText(py)
+				pinyinStatus.SetText("")
 			})
 		}()
 	})
+	pinyinBtn.Importance = widget.MediumImportance
+
+	pinyinTab := container.NewBorder(
+		container.NewPadded(container.NewHBox(pinyinBtn, pinyinStatus)),
+		container.NewPadded(container.NewHBox(copyPinyinBtn)),
+		nil, nil,
+		container.NewScroll(pinyinEntry),
+	)
+
+	// ── Translation tab ────────────────────────────────────────────────────
+	transEntry := widget.NewMultiLineEntry()
+	transEntry.SetPlaceHolder("点击【英文翻译】按钮生成翻译…")
+	transEntry.Wrapping = fyne.TextWrapWord
+
+	transStatus := widget.NewLabel("")
+
+	copyTransBtn := widget.NewButton("复制翻译", func() {
+		w.Clipboard().SetContent(transEntry.Text)
+	})
+	copyTransBtn.Importance = widget.HighImportance
 
 	translateBtn := widget.NewButton("英文翻译", func() {
 		src := ocrEntry.Text
-		statusLabel.SetText("翻译中…")
+		transStatus.SetText("翻译中…")
 		opts := translate.Options{
 			Provider:         cfg.TransProvider,
 			BaiduAppID:       cfg.BaiduTransAppID,
@@ -58,34 +84,54 @@ func ShowRecognizeResult(a fyne.App, cfg *config.Config, text string) {
 			TencentSecretKey: cfg.TencentTransSecretKey,
 			TencentRegion:    cfg.TencentTransRegion,
 			DeepLAuthKey:     cfg.DeepLAuthKey,
+			BaiduBaseURL:     cfg.BaiduTransBaseURL,
+			TencentEndpoint:  cfg.TencentTransEndpoint,
+			DeepLFreeURL:     cfg.DeepLFreeBaseURL,
+			DeepLPaidURL:     cfg.DeepLPaidBaseURL,
+			YoudaoURL:        cfg.YoudaoBaseURL,
 		}
 		go func() {
 			result, err := translate.Translate(src, opts)
 			fyne.Do(func() {
 				if err != nil {
-					statusLabel.SetText("翻译失败：" + err.Error())
+					transEntry.SetText("翻译失败：\n" + err.Error())
 				} else {
-					resultEntry.SetText(result)
-					statusLabel.SetText("")
+					transEntry.SetText(result)
 				}
+				transStatus.SetText("")
 			})
 		}()
 	})
+	translateBtn.Importance = widget.MediumImportance
 
-	copyResultBtn := widget.NewButton("复制结果", func() {
-		w.Clipboard().SetContent(resultEntry.Text)
-	})
+	transTab := container.NewBorder(
+		container.NewPadded(container.NewHBox(translateBtn, transStatus)),
+		container.NewPadded(container.NewHBox(copyTransBtn)),
+		nil, nil,
+		container.NewScroll(transEntry),
+	)
+
+	// ── Tabs ───────────────────────────────────────────────────────────────
+	tabs := container.NewAppTabs(
+		container.NewTabItem("拼音", pinyinTab),
+		container.NewTabItem("英文翻译", transTab),
+	)
+	tabs.SetTabLocation(container.TabLocationTop)
+
 	closeBtn := widget.NewButton("关闭", func() { w.Close() })
 
-	w.SetContent(container.NewPadded(container.NewVBox(
+	top := container.NewVBox(
 		widget.NewLabel("识别文字："),
 		ocrEntry,
 		container.NewHBox(copyOCRBtn),
 		widget.NewSeparator(),
-		container.NewHBox(pinyinBtn, translateBtn, statusLabel),
-		widget.NewLabel("转换结果："),
-		resultEntry,
-		container.NewHBox(copyResultBtn, closeBtn),
+	)
+
+	w.SetContent(container.NewPadded(container.NewBorder(
+		top,
+		container.NewPadded(closeBtn),
+		nil, nil,
+		tabs,
 	)))
 	w.Show()
 }

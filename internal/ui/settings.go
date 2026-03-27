@@ -104,21 +104,25 @@ func buildOCRTab(cfg *config.Config) fyne.CanvasObject {
 	baiduAPIKey := pwdEntry("API Key (AppID)", cfg.BaiduOCRAPIKey, func(s string) { cfg.BaiduOCRAPIKey = s })
 	baiduSecKey := pwdEntry("Secret Key", cfg.BaiduOCRSecretKey, func(s string) { cfg.BaiduOCRSecretKey = s })
 	baiduNote := noteLabel("免费额度：通用文字识别 50,000 次/天\n申请：console.bce.baidu.com → 文字识别")
+	baiduURLEntry := plainEntry("API 地址", cfg.BaiduOCRBaseURL, func(s string) { cfg.BaiduOCRBaseURL = s })
 
 	// Tencent OCR fields
 	tencentSecID := pwdEntry("SecretId", cfg.TencentOCRSecretID, func(s string) { cfg.TencentOCRSecretID = s })
 	tencentSecKey := pwdEntry("SecretKey", cfg.TencentOCRSecretKey, func(s string) { cfg.TencentOCRSecretKey = s })
 	tencentRegion := plainEntry("地域（如 ap-guangzhou）", cfg.TencentOCRRegion, func(s string) { cfg.TencentOCRRegion = s })
 	tencentNote := noteLabel("免费额度：通用印刷体识别 1,000 次/月\n申请：console.cloud.tencent.com → 文字识别")
+	tencentURLEntry := plainEntry("API 端点", cfg.TencentOCREndpoint, func(s string) { cfg.TencentOCREndpoint = s })
 
 	return container.NewVScroll(container.NewVBox(
 		sectionLabel("服务商"),
 		sel,
 		widget.NewSeparator(),
 		sectionLabel("百度 OCR"),
+		urlLabel("API 地址"), baiduURLEntry,
 		baiduAPIKey, baiduSecKey, baiduNote,
 		widget.NewSeparator(),
 		sectionLabel("腾讯 OCR"),
+		urlLabel("API 端点"), tencentURLEntry,
 		tencentSecID, tencentSecKey, tencentRegion, tencentNote,
 	))
 }
@@ -165,29 +169,45 @@ func buildTransTab(cfg *config.Config) fyne.CanvasObject {
 	baiduAppID := plainEntry("AppID", cfg.BaiduTransAppID, func(s string) { cfg.BaiduTransAppID = s })
 	baiduSecKey := pwdEntry("Secret Key", cfg.BaiduTransSecretKey, func(s string) { cfg.BaiduTransSecretKey = s })
 	baiduNote := noteLabel("免费标准版：每月 5 万字符\n申请：fanyi.baidu.com → 开放平台")
+	baiduURLEntry := plainEntry("API 地址", cfg.BaiduTransBaseURL, func(s string) { cfg.BaiduTransBaseURL = s })
 
 	// Tencent Translate
 	tencentSecID := pwdEntry("SecretId", cfg.TencentTransSecretID, func(s string) { cfg.TencentTransSecretID = s })
 	tencentSecKey := pwdEntry("SecretKey", cfg.TencentTransSecretKey, func(s string) { cfg.TencentTransSecretKey = s })
 	tencentRegion := plainEntry("地域（如 ap-guangzhou）", cfg.TencentTransRegion, func(s string) { cfg.TencentTransRegion = s })
 	tencentNote := noteLabel("免费额度：每月 500 万字符\n申请：console.cloud.tencent.com → 机器翻译")
+	tencentURLEntry := plainEntry("API 端点", cfg.TencentTransEndpoint, func(s string) { cfg.TencentTransEndpoint = s })
 
 	// DeepL
 	deeplKey := pwdEntry("Auth Key（免费版以 :fx 结尾）", cfg.DeepLAuthKey, func(s string) { cfg.DeepLAuthKey = s })
 	deeplNote := noteLabel("免费版：每月 50 万字符\n申请：www.deepl.com/pro-api")
+	deeplFreeURLEntry := plainEntry("免费版 API 地址", cfg.DeepLFreeBaseURL, func(s string) { cfg.DeepLFreeBaseURL = s })
+	deeplPaidURLEntry := plainEntry("付费版 API 地址", cfg.DeepLPaidBaseURL, func(s string) { cfg.DeepLPaidBaseURL = s })
+
+	// Youdao
+	youdaoNote := noteLabel("有道翻译：免费非官方接口，无需 API Key")
+	youdaoURLEntry := plainEntry("API 地址", cfg.YoudaoBaseURL, func(s string) { cfg.YoudaoBaseURL = s })
 
 	return container.NewVScroll(container.NewVBox(
 		sectionLabel("翻译服务商"),
 		sel,
 		widget.NewSeparator(),
 		sectionLabel("百度翻译"),
+		urlLabel("API 地址"), baiduURLEntry,
 		baiduAppID, baiduSecKey, baiduNote,
 		widget.NewSeparator(),
 		sectionLabel("腾讯翻译"),
+		urlLabel("API 端点"), tencentURLEntry,
 		tencentSecID, tencentSecKey, tencentRegion, tencentNote,
 		widget.NewSeparator(),
 		sectionLabel("DeepL"),
+		urlLabel("免费版 API 地址"), deeplFreeURLEntry,
+		urlLabel("付费版 API 地址"), deeplPaidURLEntry,
 		deeplKey, deeplNote,
+		widget.NewSeparator(),
+		sectionLabel("有道翻译"),
+		urlLabel("API 地址"), youdaoURLEntry,
+		youdaoNote,
 	))
 }
 
@@ -202,6 +222,12 @@ func sectionLabel(text string) *widget.Label {
 func noteLabel(text string) *widget.Label {
 	l := widget.NewLabel(text)
 	l.Wrapping = fyne.TextWrapWord
+	return l
+}
+
+func urlLabel(text string) *widget.Label {
+	l := widget.NewLabel(text)
+	l.TextStyle = fyne.TextStyle{Italic: true}
 	return l
 }
 

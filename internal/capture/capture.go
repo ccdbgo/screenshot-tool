@@ -134,6 +134,8 @@ func runOCRAndShow(a fyne.App, cfg *config.Config, parentWin fyne.Window, showFn
 		TencentSecretID:  cfg.TencentOCRSecretID,
 		TencentSecretKey: cfg.TencentOCRSecretKey,
 		TencentRegion:    cfg.TencentOCRRegion,
+		BaiduBaseURL:     cfg.BaiduOCRBaseURL,
+		TencentEndpoint:  cfg.TencentOCREndpoint,
 	}
 
 	text, ocrErr := uipkg.RunOCR(tmpPath, opts)

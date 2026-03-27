@@ -1,8 +1,15 @@
 package main
 
-import "fyne.io/fyne/v2"
+import (
+	_ "embed"
 
-// resourceIconPng is the app icon. Replace with a bundled icon using:
-//   fyne bundle -o resources.go assets/icon.png
-// For now, nil uses the default Fyne icon.
-var resourceIconPng fyne.Resource = nil
+	"fyne.io/fyne/v2"
+)
+
+//go:embed assets/yijie.png
+var _iconPngBytes []byte
+
+var resourceIconPng fyne.Resource = &fyne.StaticResource{
+	StaticName:    "yijie.png",
+	StaticContent: _iconPngBytes,
+}

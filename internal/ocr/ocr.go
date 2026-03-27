@@ -1,3 +1,5 @@
+//go:build windows
+
 package ocr
 
 import (
@@ -17,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -31,6 +34,10 @@ type Options struct {
 	TencentSecretID  string
 	TencentSecretKey string
 	TencentRegion    string // default: "ap-guangzhou"
+
+	// API endpoint URL overrides (empty = use defaults)
+	BaiduBaseURL    string // default: https://aip.baidubce.com
+	TencentEndpoint string // default: https://ocr.tencentcloudapi.com
 }
 
 // RecognizeFile extracts text from imagePath using the configured provider.
@@ -53,7 +60,7 @@ func RecognizeFile(imagePath string, opts Options) (string, error) {
 		return windowsRecognize(imagePath, opts.Lang)
 
 	default: // "auto"
-		if opts.BaiduAPIKey != "" && opts.BaiduSecretKey != "" {
+		if opts.BaiduAPIKey != "" && opts.BaiduSecretKey != "" { //nolint:gocritic
 			if text, err := baiduRecognize(imagePath, opts); err == nil {
 				return text, nil
 			}
@@ -83,16 +90,19 @@ type baiduTokenResp struct {
 	ErrorDesc   string `json:"error_description"`
 }
 
-func getBaiduToken(apiKey, secretKey string) (string, error) {
+func getBaiduToken(apiKey, secretKey, baseURL string) (string, error) {
 	baiduTokenMu.Lock()
 	defer baiduTokenMu.Unlock()
 
 	if tok, ok := baiduTokenCache[apiKey]; ok && time.Now().Before(baiduTokenExpiry[apiKey]) {
 		return tok, nil
 	}
+	if baseURL == "" {
+		baseURL = "https://aip.baidubce.com"
+	}
 	tokenURL := fmt.Sprintf(
-		"https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=%s&client_secret=%s",
-		url.QueryEscape(apiKey), url.QueryEscape(secretKey),
+		"%s/oauth/2.0/token?grant_type=client_credentials&client_id=%s&client_secret=%s",
+		baseURL, url.QueryEscape(apiKey), url.QueryEscape(secretKey),
 	)
 	resp, err := apiHTTP.Post(tokenURL, "application/json", nil)
 	if err != nil {
@@ -142,11 +152,15 @@ func baiduRecognize(imagePath string, opts Options) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	token, err := getBaiduToken(opts.BaiduAPIKey, opts.BaiduSecretKey)
+	baseURL := opts.BaiduBaseURL
+	if baseURL == "" {
+		baseURL = "https://aip.baidubce.com"
+	}
+	token, err := getBaiduToken(opts.BaiduAPIKey, opts.BaiduSecretKey, baseURL)
 	if err != nil {
 		return "", err
 	}
-	apiURL := "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic?access_token=" + token
+	apiURL := baseURL + "/rest/2.0/ocr/v1/general_basic?access_token=" + token
 	params := url.Values{}
 	params.Set("image", base64.StdEncoding.EncodeToString(imgData))
 	params.Set("language_type", baiduLangType(opts.Lang))
@@ -200,10 +214,14 @@ func tencentRecognize(imagePath string, opts Options) (string, error) {
 	}
 	body, _ := json.Marshal(payload)
 
+	endpoint := opts.TencentEndpoint
+	if endpoint == "" {
+		endpoint = "https://ocr.tencentcloudapi.com"
+	}
 	// Tencent Cloud API v3 signature
 	req, err := tencentSign(
 		opts.TencentSecretID, opts.TencentSecretKey,
-		"ocr", region, "GeneralBasicOCR", "2018-11-19",
+		endpoint, region, "GeneralBasicOCR", "2018-11-19",
 		string(body),
 	)
 	if err != nil {
@@ -232,8 +250,18 @@ func tencentRecognize(imagePath string, opts Options) (string, error) {
 }
 
 // tencentSign builds a signed *http.Request for Tencent Cloud API v3.
-func tencentSign(secretID, secretKey, service, region, action, version, payload string) (*http.Request, error) {
-	host := service + ".tencentcloudapi.com"
+// endpoint is the full URL, e.g. "https://ocr.tencentcloudapi.com".
+// The service name is derived from the first subdomain of the host.
+func tencentSign(secretID, secretKey, endpoint, region, action, version, payload string) (*http.Request, error) {
+	// Parse host and service name from endpoint URL.
+	parsedURL, err := url.Parse(endpoint)
+	if err != nil || parsedURL.Host == "" {
+		return nil, fmt.Errorf("腾讯云：无效的 API 端点 URL: %s", endpoint)
+	}
+	host := parsedURL.Host
+	// Derive service name from first subdomain (e.g. "ocr" from "ocr.tencentcloudapi.com")
+	service := strings.SplitN(host, ".", 2)[0]
+
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	date := time.Now().UTC().Format("2006-01-02")
 
@@ -260,7 +288,7 @@ func tencentSign(secretID, secretKey, service, region, action, version, payload 
 		secretID, credScope, signedHeaders, signature,
 	)
 
-	req, err := http.NewRequest("POST", "https://"+host, strings.NewReader(payload))
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -339,10 +367,12 @@ func windowsRecognize(imagePath, lang string) (string, error) {
 	cmd := fmt.Sprintf(`& { %s } -imagePath '%s' -lang '%s'`, psScript, escapePS(winPath), lang)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx,
+	c := exec.CommandContext(ctx,
 		"powershell.exe", "-WindowStyle", "Hidden", "-NonInteractive", "-NoProfile",
 		"-Command", cmd,
-	).Output()
+	)
+	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	out, err := c.Output()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", fmt.Errorf("Windows OCR 超时（30秒）")
